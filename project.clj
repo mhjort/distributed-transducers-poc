@@ -4,6 +4,10 @@
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :dependencies [[org.clojure/clojure "1.8.0"]
+                 [cheshire "5.5.0"]
+                 [serializable-fn "1.1.4"]
+                 [com.amazonaws/aws-java-sdk-lambda "1.10.50"]
+                 [com.amazonaws/aws-java-sdk-core "1.10.50"]
                  [uswitch/lambada "0.1.2"]]
   :lambda {"demo" [{:handler "distributed-transducers-poc.LambdaFn"
                     :memory-size 1536
@@ -13,5 +17,4 @@
                     :s3 {:bucket "distributed-transducers-poc"
                          :object-key "lambda.jar"}}]}
   :plugins [[lein-clj-lambda "0.4.1"]]
-  :aot [distributed-transducers-poc.core])
-
+  :aot [distributed-transducers-poc.core serializable.fn])
