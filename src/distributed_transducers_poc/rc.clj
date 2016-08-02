@@ -30,6 +30,11 @@
                     (.withPayload (generate-string {:function f})))]
     (parse-result (.invoke client request))))
 
+(defmacro super-reduce [f xs]
+  `(invoke-lambda (pr-str (s/fn [] (reduce ~f ~xs))) "distributed-transducers-poc" "eu-west-1"))
+
+;(super-reduce + (range 100000))
+
 ;(invoke-lambda (pr-str (s/fn [] (map #(* 2 %) [3 4 5]))) "distributed-transducers-poc" "eu-west-1")
 
 ;(let [f (generate-string {:command (pr-str (s/fn [] (+ 2 3)))})]
