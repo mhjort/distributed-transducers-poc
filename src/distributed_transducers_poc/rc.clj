@@ -1,6 +1,6 @@
 (ns distributed-transducers-poc.rc
   (:require [cheshire.core :refer [generate-string parse-string parse-stream]]
-            [clojure.core.async :refer [go]]
+            [clojure.core.async :refer [chan go go-loop >! <! <!!]]
             [clojure.java.io :as io]
             [serializable.fn :as s])
   (:import [com.amazonaws ClientConfiguration]
@@ -67,6 +67,14 @@
         (.getBody)
         (to-json))))
 
+(defn receive-messages [queue-url wait-in-seconds]
+  (let [to-json #(parse-string % true)
+        raw-messages (-> (.receiveMessage sqs-client (-> (ReceiveMessageRequest.)
+                                        (.withQueueUrl queue-url)
+                                        (.withWaitTimeSeconds (int wait-in-seconds))))
+        (.getMessages))]
+    (map #(-> % .getBody to-json) raw-messages)))
+
 (defn delete-queue [queue-url]
   (.deleteQueue sqs-client queue-url))
 
@@ -76,17 +84,89 @@
           response {:result (f (:param payload))}]
       (send-message out-queue response))))
 
+(defn message-loop [f in-queue out-queue]
+  (go-loop []
+     (let [messages (receive-message in-queue 5)]
+       (doseq [message (filter #(= "process" (:type "message")) messages)]
+          (send-message out-queue {:result (f (:param message))}))
+       (when-not (some #(= "stop" (:type %)) messages)
+         (recur)))))
+
+(defn uber-queue [key-fn]
+  {:next-items []
+   :next-index 0
+   :key-fn key-fn
+   :queue (java.util.PriorityQueue. 10 (comparator (fn [x y] (< (key-fn x) (key-fn y)))))})
+
+(defn add [{:keys [next-items next-index key-fn queue] :as uber} element]
+  (.add queue element)
+  (if (= next-index (key-fn (.peek queue)))
+    (do
+      (.poll queue)
+      {:next-items (conj next-items element)
+       :next-index (inc next-index)
+       :key-fn key-fn
+       :queue queue})
+    uber))
+
+(defn add-all [{:keys [next-items next-index key-fn queue] :as uber} elements]
+  (if (empty? elements)
+    uber
+    (add-all (add uber (first elements)) (drop 1 elements))))
+
+(defn vittu [uber]
+  (update uber :next-items (partial drop 1)))
+
+(defn head [{:keys [next-items]}]
+  (first next-items))
+
+(defn send-ok-messages [c buffer]
+  (if-let [result (head buffer)]
+    (do
+      (go (>! c result))
+      (send-ok-messages c (vittu buffer)))
+    buffer))
+
+(defn handler-loop [in-queue max-index]
+  (let [buffer (uber-queue :index)
+        ret (chan 10)]
+    (go-loop [next-index 0
+              buffer (uber-queue :index)]
+             (when (< next-index max-index)
+               (let [messages (receive-messages in-queue 4)]
+                 (recur (inc next-index)
+                        (send-ok-messages ret (add-all buffer messages))))))
+    ret))
+
 (defn uuid [] (str (java.util.UUID/randomUUID)))
 
+;(create-queue (uuid))
+
+;(comment
+(defn lol []
+ (let [queue (create-queue (uuid))
+      a (handler-loop queue 4)]
+  (println (send-message queue {:index 0 :result "a"}))
+  (send-message queue {:index 2 :result "b"})
+  (send-message queue {:index 1 :result "b"})
+  (send-message queue {:index 3 :result "b"})
+  [(<!! a) (<!! a) (<!! a) (<!! a)]))
+;)
+
+;(lol)
+
+
 (defn queue-reduce [f xs in-queue out-queue]
-  (let [batches (partition-all 1024 xs)]
-    (reduce (fn [acc batch]
-              (send-message in-queue {:param batch})
-              (message-handler #(reduce f %) in-queue out-queue)
-              (let [response (receive-message out-queue 5)]
-                (f acc (:result response))))
-            0
-            batches)))
+  (message-loop #(reduce f %) in-queue out-queue)
+  (let [batches (partition-all 1024 xs)
+        response (reduce (fn [acc batch]
+                           (send-message in-queue {:type "process" :param batch})
+                           (let [response (receive-message out-queue 5)]
+                             (f acc (:result response))))
+                         0
+                         batches)]
+    (send-message in-queue {:type "stop"})
+    response))
 
 (comment
 (let [in (create-queue (uuid))
