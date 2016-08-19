@@ -37,9 +37,6 @@
 (defmacro super-reduce [f xs]
   `(invoke-lambda (pr-str (s/fn [] (reduce ~f ~xs))) "distributed-transducers-poc" "eu-west-1"))
 
-(defn plus [a b]
-  (+ a b))
-
 (def sqs-client (AmazonSQSClient. aws-credentials))
 
 (defn create-queue [queue-name]
@@ -90,7 +87,6 @@
   (let [handler (fn [message]
                   (when (= "process" (:type message)
                            (let [result (f (:payload message))]
-                             (println "Result " result)
                              (send-message out-queue {:index (:index message)
                                                       :payload result}))))
                     (:type message))]
@@ -103,7 +99,6 @@
 (defn send-ok-messages [c buffer]
   (if-let [result (aq/peek-head buffer)]
     (do
-      (println "Sending ok" result)
       (go (>! c result))
       (send-ok-messages c (aq/remove-one buffer)))
     buffer))
@@ -121,35 +116,34 @@
 
 (defn uuid [] (str (java.util.UUID/randomUUID)))
 
-;(create-queue (uuid))
-
-(defn queue-reduce [f xs in-queue out-queue]
-  (message-loop (fn [x] (reduce f x)) in-queue out-queue)
+(defn queue-reduce [f xs in-queues out-queue]
+  (doseq [in-queue in-queues]
+    (message-loop (fn [x] (reduce f x)) in-queue out-queue))
   (let [{:keys [results stop-fn]} (handler-loop out-queue)
-        batches (map (fn [a b] [a b]) (partition-all 1024 xs) (range))]
+        batches (map (fn [a b] [a b]) (partition-all 4096 xs) (range))]
     (thread
       (doseq [[batch index] batches]
-        (send-message in-queue {:type "process" :index index :payload batch})))
+        (send-message (nth in-queues (mod index (count in-queues)))
+                      {:type "process" :index index :payload batch})))
     (let [response (reduce (fn [acc _]
                              (f acc (:payload (<!! results))))
                            0
                            batches)]
-      (send-message in-queue {:type "stop"})
+      (doseq [in-queue in-queues]
+        (send-message in-queue {:type "stop"}))
       (stop-fn)
       response)))
 
-;(comment
-(defn do-reduce []
-  (let [in (create-queue (uuid))
+(defn uber-reduce [f xs node-count]
+  (let [in-queues  (map (fn [_] (create-queue (uuid)))
+                        (range node-count))
         out (create-queue (uuid))]
-    (let [response (queue-reduce + (range 10000) in out)]
+    (let [response (queue-reduce f xs in-queues out)]
       (Thread/sleep 200)
-      (delete-queue in)
+      (doseq [in-queue in-queues]
+        (delete-queue in-queue))
       (delete-queue out)
       response)))
-  ;(super-reduce plus (range 100000))
-
-
 
 ;(invoke-lambda (pr-str (s/fn [] (map #(* 2 %) [3 4 5]))) "distributed-transducers-poc" "eu-west-1")
 
