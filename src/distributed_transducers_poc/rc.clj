@@ -2,6 +2,7 @@
   (:require [cheshire.core :refer [generate-string parse-string parse-stream]]
             [clojure.core.async :refer [chan thread go go-loop >! <! <!!]]
             [clojure.java.io :as io]
+            [distributed-transducers-poc.adjacent-queue :as aq]
             [serializable.fn :as s])
   (:import [com.amazonaws ClientConfiguration]
            [com.amazonaws.auth DefaultAWSCredentialsProviderChain]
@@ -91,66 +92,30 @@
                            (let [result (f (:payload message))]
                              (println "Result " result)
                              (send-message out-queue {:index (:index message)
-                                                      :payload result})))
-                    (:type message)))]
+                                                      :payload result}))))
+                    (:type message))]
     (go-loop []
              (let [responses (receive-messages in-queue 5 handler)]
                (when-not (some #(= "stop" %) responses)
                  (recur))))))
 
-(defn uber-queue [key-fn]
-  {:next-items []
-   :next-index 0
-   :key-fn key-fn
-   :queue (java.util.PriorityQueue. 10 (comparator (fn [x y] (< (key-fn x) (key-fn y)))))})
-
-(defn add [{:keys [key-fn queue] :as uber} element]
-  (.add queue element)
-  (loop [{:keys [next-items next-index] :as result} uber]
-    (if (not (= next-index (key-fn (.peek queue))))
-      result
-      (do
-        (let [e (.poll queue)]
-          (recur {:next-items (sort-by :index (cons e next-items))
-                  :next-index (inc next-index)
-                  :key-fn key-fn
-                  :queue queue}))))))
-
-(defn add-all [{:keys [next-items next-index key-fn queue] :as uber} elements]
-  (if (empty? elements)
-    uber
-    (add-all (add uber (first elements)) (drop 1 elements))))
-
-(defn remove-one [uber]
-  (update uber :next-items (partial drop 1)))
-
-(defn head [{:keys [next-items]}]
-  (first next-items))
-
-(-> (uber-queue :index)
-    (add {:index 0})
-    (remove-one)
-    (add {:index 2})
-    (add {:index 1}))
 
 (defn send-ok-messages [c buffer]
-  (if-let [result (head buffer)]
+  (if-let [result (aq/peek-head buffer)]
     (do
       (println "Sending ok" result)
-      (println "Sending budd" buffer)
       (go (>! c result))
-      (send-ok-messages c (remove-one buffer)))
+      (send-ok-messages c (aq/remove-one buffer)))
     buffer))
 
 (defn handler-loop [in-queue]
   (let [continue? (atom true)
         stop-fn #(reset! continue? false)
-        buffer (uber-queue :index)
         ret (chan 10)]
-    (go-loop [buffer (uber-queue :index)]
+    (go-loop [buffer (aq/create :index)]
              (when @continue?
                (let [messages [(receive-message in-queue 3)]]
-                 (recur (send-ok-messages ret (add-all buffer messages))))))
+                 (recur (send-ok-messages ret (aq/add-all buffer messages))))))
     {:results ret
      :stop-fn stop-fn}))
 
@@ -178,6 +143,7 @@
   (let [in (create-queue (uuid))
         out (create-queue (uuid))]
     (let [response (queue-reduce + (range 10000) in out)]
+      (Thread/sleep 200)
       (delete-queue in)
       (delete-queue out)
       response)))
