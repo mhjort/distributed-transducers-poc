@@ -21,5 +21,5 @@
                                          :Resource ["arn:aws:sqs:eu-west-1:*"]}]
                     :s3 {:bucket "distributed-transducers-poc"
                          :object-key "lambda.jar"}}]}
-  :plugins [[lein-clj-lambda "0.4.1"]]
+  :plugins [[lein-clj-lambda "0.5.0"]]
   :aot [distributed-transducers-poc.core serializable.fn])
