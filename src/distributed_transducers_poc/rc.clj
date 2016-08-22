@@ -3,14 +3,25 @@
             [clojure.core.async :refer [chan thread go go-loop >! <! <!!]]
             [clojure.java.io :as io]
             [distributed-transducers-poc.adjacent-queue :as aq]
+            [distributed-transducers-poc.sqs :as sqs]
             [serializable.fn :as s])
   (:import [com.amazonaws ClientConfiguration]
            [com.amazonaws.auth DefaultAWSCredentialsProviderChain]
            [com.amazonaws.regions Regions]
-           [com.amazonaws.services.sqs AmazonSQSClient]
-           [com.amazonaws.services.sqs.model ReceiveMessageRequest]
            [com.amazonaws.services.lambda.model InvokeRequest]
            [com.amazonaws.services.lambda AWSLambdaClient]))
+
+(defn message-loop [f in-queue out-queue]
+  (let [handler (fn [message]
+                  (when (= "process" (:type message)
+                           (let [result (f (:payload message))]
+                             (sqs/send-message out-queue {:index (:index message)
+                                                      :payload result}))))
+                    (:type message))]
+    (go-loop []
+             (let [responses (sqs/receive-messages in-queue 5 handler)]
+               (when-not (some #(= "stop" %) responses)
+                 (recur))))))
 
 (def aws-credentials
   (.getCredentials (DefaultAWSCredentialsProviderChain.)))
@@ -23,7 +34,7 @@
       (io/reader)
       (parse-stream true)))
 
-(defn invoke-lambda [f lambda-function-name region]
+(defn invoke-lambda [payload lambda-function-name region]
   (println "Invoking Lambda")
   (let [client-config (-> (ClientConfiguration.)
                           (.withSocketTimeout (* 6 60 1000)))
@@ -31,70 +42,11 @@
                    (.withRegion (Regions/fromName region)))
         request (-> (InvokeRequest.)
                     (.withFunctionName lambda-function-name)
-                    (.withPayload (generate-string {:function f})))]
+                    (.withPayload (generate-string payload)))]
     (parse-result (.invoke client request))))
 
 (defmacro super-reduce [f xs]
   `(invoke-lambda (pr-str (s/fn [] (reduce ~f ~xs))) "distributed-transducers-poc" "eu-west-1"))
-
-(def sqs-client (AmazonSQSClient. aws-credentials))
-
-(defn create-queue [queue-name]
-  (let [queue-url (-> sqs-client
-                      (.createQueue queue-name)
-                      (.getQueueUrl))]
-    (loop []
-      (let [urls (.getQueueUrls (.listQueues sqs-client queue-name))]
-      (when (empty? urls)
-        (Thread/sleep 200)
-        (recur))))
-    queue-url))
-
-(defn send-message [queue-url payload]
-  (.sendMessage sqs-client
-                queue-url
-                (generate-string payload)))
-
-(defn receive-message [queue-url wait-in-seconds]
-  (let [from-json #(parse-string % true)
-        raw-message (-> (.receiveMessage sqs-client (-> (ReceiveMessageRequest.)
-                                        (.withQueueUrl queue-url)
-                                        (.withWaitTimeSeconds (int wait-in-seconds))))
-        (.getMessages)
-        (first))]
-    (when raw-message
-      (.deleteMessage sqs-client queue-url (.getReceiptHandle raw-message))
-      (-> raw-message .getBody from-json))))
-
-(defn receive-messages [queue-url wait-in-seconds handler-fn]
-  (let [to-json #(parse-string % true)
-        raw-messages (-> (.receiveMessage sqs-client (-> (ReceiveMessageRequest.)
-                                                         (.withQueueUrl queue-url)
-                                                         (.withWaitTimeSeconds (int wait-in-seconds))))
-                         (.getMessages))]
-    (map (fn [raw-message]
-           (let [handle (.getReceiptHandle raw-message)
-                 payload (-> raw-message .getBody to-json)
-                 ret-value (handler-fn payload)]
-             (.deleteMessage sqs-client queue-url handle)
-             ret-value))
-         raw-messages)))
-
-(defn delete-queue [queue-url]
-  (.deleteQueue sqs-client queue-url))
-
-(defn message-loop [f in-queue out-queue]
-  (let [handler (fn [message]
-                  (when (= "process" (:type message)
-                           (let [result (f (:payload message))]
-                             (send-message out-queue {:index (:index message)
-                                                      :payload result}))))
-                    (:type message))]
-    (go-loop []
-             (let [responses (receive-messages in-queue 5 handler)]
-               (when-not (some #(= "stop" %) responses)
-                 (recur))))))
-
 
 (defn send-ok-messages [c buffer]
   (if-let [result (aq/peek-head buffer)]
@@ -109,41 +61,52 @@
         ret (chan 10)]
     (go-loop [buffer (aq/create :index)]
              (when @continue?
-               (let [messages [(receive-message in-queue 3)]]
-                 (recur (send-ok-messages ret (aq/add-all buffer messages))))))
+               (recur (if-let [message (sqs/receive-message in-queue 3)]
+                        (send-ok-messages ret (aq/add-one buffer message))
+                        buffer))))
     {:results ret
      :stop-fn stop-fn}))
 
 (defn uuid [] (str (java.util.UUID/randomUUID)))
 
-(defn queue-reduce [f xs in-queues out-queue]
-  (doseq [in-queue in-queues]
-    (message-loop (fn [x] (reduce f x)) in-queue out-queue))
+(defn queue-reduce [f xs in-queues out-queue run-locally?]
+  (when run-locally?
+    (doseq [in-queue in-queues]
+      (message-loop (fn [x] (reduce f x)) in-queue out-queue)))
   (let [{:keys [results stop-fn]} (handler-loop out-queue)
         batches (map (fn [a b] [a b]) (partition-all 4096 xs) (range))]
     (thread
       (doseq [[batch index] batches]
-        (send-message (nth in-queues (mod index (count in-queues)))
+        (sqs/send-message (nth in-queues (mod index (count in-queues)))
                       {:type "process" :index index :payload batch})))
     (let [response (reduce (fn [acc _]
                              (f acc (:payload (<!! results))))
                            0
                            batches)]
       (doseq [in-queue in-queues]
-        (send-message in-queue {:type "stop"}))
+        (sqs/send-message in-queue {:type "stop"}))
       (stop-fn)
       response)))
 
-(defn uber-reduce [f xs node-count]
-  (let [in-queues  (map (fn [_] (create-queue (uuid)))
-                        (range node-count))
-        out (create-queue (uuid))]
-    (let [response (queue-reduce f xs in-queues out)]
+(defn uber-reduce [f f-str xs node-count lambda-function-name region]
+  (let [out (sqs/create-queue (uuid))
+        in-queues  (doall (map (fn [_]
+                                 (let [queue (sqs/create-queue (uuid))]
+                                   (thread (invoke-lambda {:function f-str :in queue :out out}
+                                                          lambda-function-name region))
+                                   queue))
+                               (range node-count)))]
+    (let [response (queue-reduce f xs in-queues out false)]
       (Thread/sleep 200)
       (doseq [in-queue in-queues]
-        (delete-queue in-queue))
-      (delete-queue out)
+        (sqs/delete-queue in-queue))
+      (sqs/delete-queue out)
       response)))
+
+(defmacro super-reduce2 [f xs]
+  `(uber-reduce ~f (pr-str (s/fn [ys#] (reduce ~f ys#))) ~xs 2 "distributed-transducers-poc" "eu-west-1"))
+
+;(super-reduce2 + (range 100000))
 
 ;(invoke-lambda (pr-str (s/fn [] (map #(* 2 %) [3 4 5]))) "distributed-transducers-poc" "eu-west-1")
 

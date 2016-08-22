@@ -16,6 +16,9 @@
                     :timeout 300
                     :function-name "distributed-transducers-poc"
                     :region "eu-west-1"
+                    :policy-statements [{:Effect "Allow"
+                                         :Action ["sqs:*"]
+                                         :Resource ["arn:aws:sqs:eu-west-1:*"]}]
                     :s3 {:bucket "distributed-transducers-poc"
                          :object-key "lambda.jar"}}]}
   :plugins [[lein-clj-lambda "0.4.1"]]
