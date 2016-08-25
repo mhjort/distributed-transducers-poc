@@ -2,6 +2,7 @@
   (:require [cheshire.core :refer [generate-string parse-string parse-stream]]
             [clojure.core.async :refer [chan thread go go-loop >! <! <!!]]
             [clojure.java.io :as io]
+            [clojure.core.reducers :as r]
             [distributed-transducers-poc.adjacent-queue :as aq]
             [distributed-transducers-poc.sqs :as sqs]
             [serializable.fn :as s])
@@ -81,18 +82,26 @@
                       {:type "process" :index index :payload batch})))
     (let [response (reduce (fn [acc _]
                              (f acc (:payload (<!! results))))
-                           0
+                           (f)
                            batches)]
       (doseq [in-queue in-queues]
         (sqs/send-message in-queue {:type "stop"}))
       (stop-fn)
       response)))
 
-(defn uber-reduce [f f-str xs node-count lambda-function-name region]
+(defn- loadable-namespace [namespace-str]
+  (str "/" (-> namespace-str
+               (clojure.string/replace #"\." "/")
+               (clojure.string/replace #"-" "_"))))
+
+(defn uber-reduce [f f-str xs function-namespace node-count lambda-function-name region]
   (let [out (sqs/create-queue (uuid))
         in-queues  (doall (map (fn [_]
                                  (let [queue (sqs/create-queue (uuid))]
-                                   (thread (invoke-lambda {:function f-str :in queue :out out}
+                                   (thread (invoke-lambda {:function f-str
+                                                           :function-namespace (loadable-namespace function-namespace)
+                                                           :in queue
+                                                           :out out}
                                                           lambda-function-name region))
                                    queue))
                                (range node-count)))]
@@ -103,12 +112,6 @@
       (sqs/delete-queue out)
       response)))
 
-(defmacro super-reduce2 [f xs]
-  `(uber-reduce ~f (pr-str (s/fn [ys#] (reduce ~f ys#))) ~xs 2 "distributed-transducers-poc" "eu-west-1"))
+(defmacro super-fold [combinef reducef xs node-count]
+  `(uber-reduce ~combinef (pr-str (s/fn [ys#] (r/fold ~combinef ~reducef ys#))) ~xs *ns* ~node-count "distributed-transducers-poc" "eu-west-1"))
 
-;(super-reduce2 + (range 100000))
-
-;(invoke-lambda (pr-str (s/fn [] (map #(* 2 %) [3 4 5]))) "distributed-transducers-poc" "eu-west-1")
-
-;(let [f (generate-string {:command (pr-str (s/fn [] (+ 2 3)))})]
-;  ((load-string (:command (parse-string f true)))))
