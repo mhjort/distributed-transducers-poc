@@ -70,21 +70,18 @@
 
 (defn uuid [] (str (java.util.UUID/randomUUID)))
 
-(defn queue-reduce [f xs in-queues out-queue run-locally?]
-  (when run-locally?
-    (doseq [in-queue in-queues]
-      (message-loop (fn [x] (reduce f x)) in-queue out-queue)))
+(defn queue-reduce [f xs in-queue out-queue node-count]
   (let [{:keys [results stop-fn]} (handler-loop out-queue)
         batches (map (fn [a b] [a b]) (partition-all 4096 xs) (range))]
     (thread
       (doseq [[batch index] batches]
-        (sqs/send-message (nth in-queues (mod index (count in-queues)))
-                      {:type "process" :index index :payload batch})))
+        (sqs/send-message in-queue
+                          {:type "process" :index index :payload batch})))
     (let [response (reduce (fn [acc _]
                              (f acc (:payload (<!! results))))
                            (f)
                            batches)]
-      (doseq [in-queue in-queues]
+      (dotimes [_ node-count]
         (sqs/send-message in-queue {:type "stop"}))
       (stop-fn)
       response)))
@@ -96,19 +93,16 @@
 
 (defn uber-reduce [f f-str xs function-namespace node-count lambda-function-name region]
   (let [out (sqs/create-queue (uuid))
-        in-queues  (doall (map (fn [_]
-                                 (let [queue (sqs/create-queue (uuid))]
-                                   (thread (invoke-lambda {:function f-str
-                                                           :function-namespace (loadable-namespace function-namespace)
-                                                           :in queue
-                                                           :out out}
-                                                          lambda-function-name region))
-                                   queue))
-                               (range node-count)))]
-    (let [response (queue-reduce f xs in-queues out false)]
+        in (sqs/create-queue (uuid))]
+    (dotimes [_ node-count]
+      (thread (invoke-lambda {:function f-str
+                              :function-namespace (loadable-namespace function-namespace)
+                              :in in
+                              :out out}
+                             lambda-function-name region)))
+    (let [response (queue-reduce f xs in out node-count)]
       (Thread/sleep 200)
-      (doseq [in-queue in-queues]
-        (sqs/delete-queue in-queue))
+      (sqs/delete-queue in)
       (sqs/delete-queue out)
       response)))
 
