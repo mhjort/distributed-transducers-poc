@@ -15,18 +15,6 @@
 (defn word-frequency [text]
     (r/fold merge-counts count-words (clojure.string/split text #"\s+")))
 
-(defn- compute-next-row
-  [prev-row current-element other-seq pred]
-  (reduce
-    (fn [row [diagonal above other-element]]
-      (let [update-val
-            (if (pred other-element current-element)
-              diagonal
-              )]
-        (conj row update-val)))
-    [(inc (first prev-row))]
-    (map vector prev-row (next prev-row) other-seq)))
-
 
 (time (take 10 (doall (pmap #(clj-fuzzy.levensthein/distance "book" %) (clojure.string/split (slurp "resources/lilja.txt") #"\s+")))))
 ;"Elapsed time: 452925.488452 msecs"
