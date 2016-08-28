@@ -15,22 +15,23 @@
 (defn word-frequency [text]
     (r/fold merge-counts count-words (clojure.string/split text #"\s+")))
 
-
-(time (take 10 (doall (pmap #(clj-fuzzy.levensthein/distance "book" %) (clojure.string/split (slurp "resources/lilja.txt") #"\s+")))))
+;(time (take 10 (doall (pmap #(clj-fuzzy.levensthein/distance "book" %) (clojure.string/split (slurp "resources/lilja.txt") #"\s+")))))
+; Big file local
 ;"Elapsed time: 452925.488452 msecs"
 
 ; (time (doall (take 10 (word-frequency (slurp "resources/big.txt")))))
 
 ;(r/fold concat #(conj %1 (clj-fuzzy.levensthein/distance "book" %2)) ["backi" "buck" "yyy"])
 
-;(comment
+(comment
 (time (doall (take 10 (super-fold concat
                                   #(conj %1 (clj-fuzzy.levensthein/distance "book" %2))
-                                  (clojure.string/split (slurp "resources/lilja.txt") #"\s+")
-                                  5))))
-;)
-;"Elapsed time: 219173.54034 msecs"
-;(4 4 3 8 5 4 3 2 4 4)
+                                  (clojure.string/split (slurp "resources/big.txt") #"\s+")
+                                  10))))
+)
+; Big file 10 Lambdas
+; "Elapsed time: 109665.06582 msecs"
+; (11 4 5 3 6 5 4 4 4 4)
 
 
 (comment
