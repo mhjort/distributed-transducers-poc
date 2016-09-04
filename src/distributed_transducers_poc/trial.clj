@@ -15,6 +15,11 @@
 (defn word-frequency [text]
     (r/fold merge-counts count-words (clojure.string/split text #"\s+")))
 
+(def xf (comp (filter odd?) (map inc)))
+(transduce xf + (range 5))
+;; => 6
+
+
 ;(time (take 10 (doall (pmap #(clj-fuzzy.levensthein/distance "book" %) (clojure.string/split (slurp "resources/lilja.txt") #"\s+")))))
 ; Big file local
 ;"Elapsed time: 452925.488452 msecs"
