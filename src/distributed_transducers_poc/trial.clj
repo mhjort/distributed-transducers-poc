@@ -15,7 +15,42 @@
 (defn word-frequency [text]
     (r/fold merge-counts count-words (clojure.string/split text #"\s+")))
 
+(defn file-by-word [file]
+  (clojure.string/split (slurp file) #"\s+"))
+
+(defn accu
+  ([] {})
+  ([similar-words word]
+   (println similar-words word)
+   (let [distance (clj-fuzzy.levensthein/distance "book" word)]
+     (update similar-words distance #(set (conj % word))))))
+
+(defn similar? [minimum-distance]
+  (filter (fn [[k v]]
+            (<= k minimum-distance))))
+
+(defn distance [word]
+  (map (fn [other]
+         (let [distance (clj-fuzzy.levensthein/distance word other)]
+           [distance other]))))
+
+(defn accu2
+  ([] {})
+  ([e] e)
+  ([acc [k v]]
+     (update acc k #(set (conj % v)))))
+
+;(transduce (comp (distance "book") (similar? 1)) accu2 ["book" "took" "look" "car" "bar"])
+
+;(time (r/fold accu2 (r/folder ["book" "took" "look" "car" "bar" "is"] (comp (distance "book") (similar? 1)))))
+
+;(r/fold accu (file-by-word "resources/lilja.txt"))
+
+
+;(reduce accu {} ["word" "cat" "car" "car"])
+
 (def xf (comp (filter odd?) (map inc)))
+
 (transduce xf + (range 5))
 ;; => 6
 
