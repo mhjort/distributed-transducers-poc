@@ -40,9 +40,33 @@
   ([acc [k v]]
      (update acc k #(set (conj % v)))))
 
-;(transduce (comp (distance "book") (similar? 1)) accu2 ["book" "took" "look" "car" "bar"])
+#(merge-with concat)
 
-;(time (r/fold accu2 (r/folder ["book" "took" "look" "car" "bar" "is"] (comp (distance "book") (similar? 1)))))
+;(time
+;(transduce (comp (distance "book") (similar? 2)) accu2 (take 50000 (file-by-word "resources/lilja.txt")))
+;)
+
+;Example from david nolen
+;(fold + ((map inc) +) (vec (range 1000000)))
+
+;Finally working version!!!
+(comment
+(time
+  (r/fold (partial merge-with concat)
+          ((comp (distance "book") (similar? 2)) accu2)
+          (vec (take 50000 (file-by-word "resources/lilja.txt"))))) ;Note! vec forces item to be non-lazy so that parallel fold works
+)
+
+(comment
+(time
+  (r/fold (partial merge-with concat)
+          accu2
+          (r/folder (take 50000 (file-by-word "resources/lilja.txt"))
+                    (comp (distance "book") (similar? 2)))))
+)
+
+(r/folder (take 50000 (file-by-word "resources/lilja.txt"))
+                    (comp (distance "book") (similar? 2)))
 
 ;(r/fold accu (file-by-word "resources/lilja.txt"))
 
