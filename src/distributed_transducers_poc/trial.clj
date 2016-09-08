@@ -34,17 +34,71 @@
          (let [distance (clj-fuzzy.levensthein/distance word other)]
            [distance other]))))
 
-(defn accu2
+(def dictionary (file-by-word "/usr/share/dict/words"))
+
+(defn append-by-distance
   ([] {})
   ([e] e)
-  ([acc [k v]]
-     (update acc k #(set (conj % v)))))
+  ([acc [d w]]
+     (update acc d #(set (conj % w)))))
 
-#(merge-with concat)
+(def dictionary-words ["word" "sword" "lord" "book"])
 
-;(time
-;(transduce (comp (distance "book") (similar? 2)) accu2 (take 50000 (file-by-word "resources/lilja.txt")))
-;)
+(defn levensthein-distance [word1 word2]
+  [(clj-fuzzy.levensthein/distance word1 word2) word2])
+
+(defn similar-words-1 [word words min-distance]
+  (->> words
+       (map (partial levensthein-distance word))
+       (filter (fn [[d _]] (<= d min-distance)))
+       (reduce append-by-distance {})))
+
+
+(similar-words-1 "word" ["sword" "lord" "card" "cat"] 2)
+
+;(time (simular-words-1 (file-by-word "/usr/share/dict/words"))
+;73000 ms
+
+(defn similar-words-2 [word words min-distance]
+  (transduce (comp (map (partial levensthein-distance word))
+                   (filter (fn [[d _]] (<= d min-distance))))
+             append-by-distance
+             words))
+
+(similar-words-2 "word" ["sword" "lord" "card" "cat"] 2)
+
+(defn similar-words-3 [word words min-distance]
+  (r/fold (partial merge-with concat)
+          append-by-distance
+          (r/folder words
+                    (comp (map (partial levensthein-distance word))
+                          (filter (fn [[d _]] (<= d min-distance)))))))
+
+(similar-words-3 "word" ["sword" "lord" "card" "cat"] 2)
+
+
+(defn similar-words-4 [word words min-distance]
+  (r/fold (partial merge-with concat)
+          ((comp (map (partial levensthein-distance word))
+                   (filter (fn [[d _]] (<= d min-distance)))) append-by-distance)
+          words))
+
+;(similar-words-4 "word" (take 50000 (file-by-word "resources/lilja.txt")) 2)
+
+(defn similar-words-5 [word words min-distance]
+  (r/fold (partial merge-with concat)
+          ((comp (map (partial levensthein-distance word))
+                   (filter (fn [[d _]] (<= d min-distance)))) append-by-distance)
+          (vec words)))
+
+;(similar-words-5 "word" (take 50000 (file-by-word "resources/lilja.txt")) 2)
+
+(comment
+(time
+(transduce (comp (distance "book") (similar? 2)) append-by-distance (take 50000 (file-by-word "resources/lilja.txt")))
+)
+)
+;75000 ms
 
 ;Example from david nolen
 ;(fold + ((map inc) +) (vec (range 1000000)))
@@ -53,14 +107,14 @@
 (comment
 (time
   (r/fold (partial merge-with concat)
-          ((comp (distance "book") (similar? 2)) accu2)
+          ((comp (distance "book") (similar? 2)) append-by-distance)
           (vec (take 50000 (file-by-word "resources/lilja.txt"))))) ;Note! vec forces item to be non-lazy so that parallel fold works
 )
 
 (comment
 (time
   (r/fold (partial merge-with concat)
-          accu2
+          append-by-distance
           (r/folder (take 50000 (file-by-word "resources/lilja.txt"))
                     (comp (distance "book") (similar? 2)))))
 )

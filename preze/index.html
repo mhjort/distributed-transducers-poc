@@ -39,20 +39,68 @@
         <h2>Moar performance in a transparent way</h2>
       </section>
       <section>
-        <h1>Transducer</h1>
+        <h1>Similar words</h1>
         <pre><code data-trim data-noescape>
-(def xf
-  (comp (filter odd?) (map inc)))
-        
-(transduce xf + (range 5))
-        
-;; => 6
+(defn similar-words-1 [word words min-distance]
+  (->> words
+       (map (partial levensthein-distance word))
+       (filter (fn [[d _]] (<= d min-distance)))
+       (reduce append-by-distance {})))
         </code></pre>
       </section>
       <section>
-        <h1>Reduce & Fold</h1>
+        <h1>Usage</h1>
         <pre><code data-trim data-noescape>
-(def some-code-here)
+(similar-words-1 "word" ["sword" "lord" "card" "cat"] 2)
+
+; => {1 #{"sword" "lord"}, 2 #{"card"}}
+        </code></pre>
+      </section>
+      <section>
+        <h1>Transducer</h1>
+        <pre><code data-trim data-noescape>
+(defn similar-words-2 [word words min-distance]
+  (transduce (comp (map (partial levensthein-distance word))
+                   (filter (fn [[d _]] (<= d min-distance))))
+             append-by-distance
+             words))
+        </code></pre>
+      </section>
+      <section>
+        <h1>Fold</h1>
+        <pre><code data-trim data-noescape>
+(defn similar-words-3 [word words min-distance]
+  (r/fold (partial merge-with concat)
+          append-by-distance
+          (r/folder words
+                    (comp (map (partial levensthein-distance word))
+                          (filter (fn [[d _]] (<= d min-distance)))))))
+        </code></pre>
+      </section>
+      <section>
+        <h1>Fold runs the reduct function in parallel!</h1>
+      </section>
+      <section>
+        <h1>Better fold</h1>
+        <pre><code data-trim data-noescape>
+(defn similar-words-4 [word words min-distance]
+  (r/fold (partial merge-with concat)
+          ((comp (map (partial levensthein-distance word))
+                 (filter (fn [[d _]] (<= d min-distance)))) append-by-distance)
+          words))
+        </code></pre>
+      </section>
+      <section>
+        <h1>Parallel fold works only with non-lazy sequences!</h1>
+      </section>
+      <section>
+        <h1>A bit better fold</h1>
+        <pre><code data-trim data-noescape>
+(defn similar-words-5 [word words min-distance]
+  (r/fold (partial merge-with concat)
+          ((comp (map (partial levensthein-distance word))
+                 (filter (fn [[d _]] (<= d min-distance)))) append-by-distance)
+          (<mark>vec</mark> words)))
         </code></pre>
       </section>
       <section>
