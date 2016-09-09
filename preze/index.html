@@ -39,7 +39,7 @@
         <h2>Moar performance in a transparent way</h2>
       </section>
       <section>
-        <h1>Similar words</h1>
+        <h1>Finding similar words</h1>
         <pre><code data-trim data-noescape>
 (defn similar-words-1 [word words min-distance]
   (->> words
@@ -95,7 +95,7 @@
       </section>
       <section>
         <h1>A bit better fold</h1>
-        <pre><code data-trim data-noescape>
+        <pre class="clojure"><code data-trim data-noescape>
 (defn similar-words-5 [word words min-distance]
   (r/fold (partial merge-with concat)
           ((comp (map (partial levensthein-distance word))
@@ -104,14 +104,12 @@
         </code></pre>
       </section>
       <section>
-        <h1>Transparent parallelism</h1>
-      </section>
-      <section>
-        <h1>Results</h1>
+        <h1>Results:</h1>
+        <h4>HP zBook Laptop (i7 Dual core)</h4>
         <ul>
-          <li>Normal: 500 ms</li>
-          <li>Transducer: 300 ms</li>
-          <li>Parallel fold: 100 ms</li>
+          <li>Normal: ~175 s</li>
+          <li>Transducer: ~170 s</li>
+          <li>Parallel fold: ~108 s</li>
         </ul>
       </section>
       <section>
@@ -119,39 +117,99 @@
       </section>
       <section>
         <h1>AWS Lambda</h1>
-        <p><i>is a compute service where you can upload your code to AWS Lambda and the service can run the code...</i></p>
-        <p><i>...you pay only for what you use. You are charged based on the number of requests for your functions and the time your code executes</i></p>
+        <h4>Service for running the code with no fixed costs</h4>
+      </section>
+      <section>
+        <h1>Amazon SQS</h1>
+        <h4>Managed message queueing service with no fixed costs</h4>
+      </section>
+      <section>
+        <h1>Architecture</h1>
+        <img src="img/architecture.jpg"/>
       </section>
       <section>
         <h1>Lambdaize!</h1>
-        <h4>Add example on lein-clj-lambda</h4>
+        <pre class="clojure"><code data-trim data-noescape>
+:plugins [[lein-clj-lambda "0.5.1"]]
+:lambda {"demo" [{:handler "distributed-transducers-poc.LambdaFn"
+                  :memory-size 1536
+                  :timeout 300
+                  :function-name "distributed-transducers-poc"
+                  :region "eu-west-1"
+                  :policy-statements [{:Effect "Allow"
+                                       :Action ["sqs:*"]
+                                       :Resource ["arn:aws:sqs:eu-west-1:*"]}]
+                  :s3 {:bucket "mhjort-distributed-transducers-poc"
+                       :object-key "lambda.jar"}}]}
+        </code></pre>
+        <pre class="bash"><code data-trim data-noescape>
+$ lein lambda install demo
+        </code></pre>
       </section>
       <section>
-        <h1>Send data = code to Lambda</h1>
-        <h4>Macro for serializing function</h4>
+        <h1>Demo tiem</h1>
       </section>
       <section>
-        <h1>Queues for using multiple nodes</h1>
-        <h4>Amazon SQS</h4>
+        <h1>What data we send via SQS?</h1>
+        <ol>
+          <li>Chunk of items to be processed</li>
+          <li>Reduct function</li>
+        </ol>
       </section>
       <section>
-        <h1>Basic prozess works</h4>
+        <h1>Serializing functions</h4>
+        <pre class="clojure"><code data-trim data-noescape>
+      <section>
+        </ol>
+      </section>
+(pr-str (fn [[d _]] (<= d 2)))
+;=> #object[user$eval14048$fn__14050 0x5ee66372 \"user$eval14048$fn__14050@5ee66372\"]
+        </code></pre>
+        <pre class="clojure"><code data-trim data-noescape>
+(require '[serializable.fn :as s])
+(pr-str (fn [[d _]] (<= d 2)))
+;=> (serializable.fn/fn [[d _]] (<= d 2))
+        </code></pre>
+        <pre class="clojure"><code data-trim data-noescape>
+((load-string (pr-str (s/fn [[d _]] (<= d 2)))) [2 "word"])
+;=> true
+        </code></pre>
       </section>
       <section>
-        <h1>Performance improvements</h1>
+        <h1>Distributed fold</h1>
+        <pre class="clojure"><code data-trim data-noescape>
+(defn similar-words-6 [word words min-distance]
+  (super-fold (partial merge-with concat)
+              ((comp (map (partial levensthein-distance word))
+                     (filter (fn [[d _]] (<= d min-distance)))) append-by-distance)
+              (vec words)
+              :nodes 10))
+        </code></pre>
+      </section>
+      <section>
+        <h1>TODO: Results</h1>
+        <ul>
+          <li>Normal: 500 ms</li>
+          <li>Transducer: 300 ms</li>
+          <li>Parallel fold: 100 ms</li>
+          <li>Distributed fold: 50 ms</li>
+        </ul>
       </section>
       <section>
         <h1>This could work...</h1>
+        <img src="img/Happy_baby.jpg"/>
       </section>
       <section>
         <h1>Links</h1>
         <p>
         <ul>
           <li><a href="https://github.com/aphyr/tesser">Tesser</a></li>
+          <li><a href="https://github.com/technomancy/serializable-fn">https://github.com/technomancy/serializable-fn</a></li>
         </ul>
         </p>
         </section>
 			</div>
+      <!--By No machine-readable author provided. Leopanza~commonswiki assumed (based on copyright claims). - No machine-readable source provided. Own work assumed (based on copyright claims)., CC BY-SA 3.0, https://commons.wikimedia.org/w/index.php?curid=1156729-->
 		</div>
 
     <div style="position: absolute; bottom: 50px; right: 120px;">
