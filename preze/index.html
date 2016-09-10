@@ -35,17 +35,18 @@
         </p>
       </section>
       <section>
-        <h1>THE GOAL</h1>
-        <h2>Moar performance in a transparent way</h2>
+        <h2>Transparent performance improvement</h2>
+        <img src="img/GOAL_GOal_Goal_goal_-_geograph.org.uk_-_1042197.jpg"/>
       </section>
       <section>
-        <h1>Finding similar words</h1>
+        <h1>Problem</h1>
+        <h2>Finding similar words</h2>
         <pre><code data-trim data-noescape>
 (defn similar-words-1 [word words min-distance]
   (->> words
        (map (partial levensthein-distance word))
        (filter (fn [[d _]] (<= d min-distance)))
-       (reduce append-by-distance {})))
+       (reduce group-by-distance {})))
         </code></pre>
       </section>
       <section>
@@ -62,7 +63,7 @@
 (defn similar-words-2 [word words min-distance]
   (transduce (comp (map (partial levensthein-distance word))
                    (filter (fn [[d _]] (<= d min-distance))))
-             append-by-distance
+             group-by-distance
              words))
         </code></pre>
       </section>
@@ -71,7 +72,7 @@
         <pre><code data-trim data-noescape>
 (defn similar-words-3 [word words min-distance]
   (r/fold (partial merge-with concat)
-          append-by-distance
+          group-by-distance
           (r/folder words
                     (comp (map (partial levensthein-distance word))
                           (filter (fn [[d _]] (<= d min-distance)))))))
@@ -86,7 +87,7 @@
 (defn similar-words-4 [word words min-distance]
   (r/fold (partial merge-with concat)
           ((comp (map (partial levensthein-distance word))
-                 (filter (fn [[d _]] (<= d min-distance)))) append-by-distance)
+                 (filter (fn [[d _]] (<= d min-distance)))) group-by-distance)
           words))
         </code></pre>
       </section>
@@ -99,12 +100,15 @@
 (defn similar-words-5 [word words min-distance]
   (r/fold (partial merge-with concat)
           ((comp (map (partial levensthein-distance word))
-                 (filter (fn [[d _]] (<= d min-distance)))) append-by-distance)
+                 (filter (fn [[d _]] (<= d min-distance)))) group-by-distance)
           (<mark>vec</mark> words)))
         </code></pre>
       </section>
       <section>
         <h1>Results:</h1>
+        <pre><code data-trim data-noescape>
+(similar-words-x "word" (from-file "/usr/share/dict/words") 2)
+        </code></pre>
         <h4>HP zBook Laptop (i7 Dual core)</h4>
         <ul>
           <li>Normal: ~175 s</li>
@@ -117,10 +121,12 @@
       </section>
       <section>
         <h1>AWS Lambda</h1>
+        <img src="img/AWS_Simple_Icons_Compute_AWSLambda.svg"/>
         <h4>Service for running the code with no fixed costs</h4>
       </section>
       <section>
         <h1>Amazon SQS</h1>
+        <img src="img/AWS_Simple_Icons_Messaging_Amazon_SQS.svg"/>
         <h4>Managed message queueing service with no fixed costs</h4>
       </section>
       <section>
@@ -160,7 +166,7 @@ $ lein lambda install demo
         <h1>Serializing functions</h4>
         <pre class="clojure"><code data-trim data-noescape>
 (pr-str (fn [[d _]] (<= d 2)))
-;=> #object[user$eval14048$fn__14050 0x5ee66372 \"user$eval14048$fn__14050@5ee66372\"]
+;=> #object[user$eval14048$fn__14050 0x5ee66372 \"user$eval14048$fn__14...
         </code></pre>
         <pre class="clojure"><code data-trim data-noescape>
 (require '[serializable.fn :as s])
@@ -178,7 +184,7 @@ $ lein lambda install demo
 (defn similar-words-6 [word words min-distance]
   (dfold (partial merge-with concat)
           ((comp (map (partial levensthein-distance word))
-                 (filter (fn [[d _]] (<= d min-distance)))) append-by-distance)
+                 (filter (fn [[d _]] (<= d min-distance)))) group-by-distance)
           (vec words)
           10))
         </code></pre>
@@ -195,18 +201,33 @@ $ lein lambda install demo
       </section>
       <section>
         <h1>This could work...</h1>
-        <img src="img/Happy_baby.jpg"/>
+        <img src="img/Kimi_Raikkonen_2008.jpg"/>
       </section>
       <section>
         <h1>Links</h1>
         <p>
         <ul>
-          <li><a href="https://github.com/aphyr/tesser">Tesser</a></li>
+          <li><a href="https://github.com/mhjort/lein-clj-lambda">https://github.com/mhjort/lein-clj-lambda</a></li>
+          <li><a href="https://github.com/uswitch/lambada">https://github.com/uswitch/lambada</a></li>
+          <li><a href="https://github.com/aphyr/tesser">https://github.com/aphyr/tesser</a></li>
           <li><a href="https://github.com/technomancy/serializable-fn">https://github.com/technomancy/serializable-fn</a></li>
         </ul>
         </p>
         </section>
-			</div>
+        <section>
+          <h1>Thanks!</h1>
+          <p>
+          Images from Wikimedia Commons:
+          </p>
+          <ul>
+            <li>By Andy Jamieson [<a href="http://creativecommons.org/licenses/by-sa/2.0">CC BY-SA 2.0</a>], <a href="https://commons.wikimedia.org/wiki/File%3AGOAL_GOal_Goal_goal_-_geograph.org.uk_-_1042197.jpg">via Wikimedia Commons</a></li>
+            <li>By Amazon Web Services LLC [<a href="http://creativecommons.org/licenses/by-sa/3.0">CC BY-SA 3.0</a>], <a href="https://commons.wikimedia.org/wiki/File%3AAWS_Simple_Icons_Compute_AWSLambda.svg">via Wikimedia Commons</a></li>
+            <li>By Amazon Web Services LLC [<a href="http://creativecommons.org/licenses/by-sa/3.0">CC BY-SA 3.0</a>], <a href="https://commons.wikimedia.org/wiki/File%3AAWS_Simple_Icons_Messaging_Amazon_SQS.svg">via Wikimedia Commons</a></li>
+            <li>By <a rel="nofollow" class="external text" href="http://www.flickr.com/people/12169388@N05">Mark McArdle</a> from Canada - <a rel="nofollow" class="external text" href="http://www.flickr.com/photos/12169388@N05/2565921310/">Kimi Raikonnen</a>, <a href="http://creativecommons.org/licenses/by-sa/2.0" title="Creative Commons Attribution-Share Alike 2.0">CC BY-SA 2.0</a>, <a href="https://commons.wikimedia.org/w/index.php?curid=4198249">https://commons.wikimedia.org/w/index.php?curid=4198249</a></li>
+          </ul>
+        </section>
+      </div>
+
       <!--By No machine-readable author provided. Leopanza~commonswiki assumed (based on copyright claims). - No machine-readable source provided. Own work assumed (based on copyright claims)., CC BY-SA 3.0, https://commons.wikimedia.org/w/index.php?curid=1156729-->
 		</div>
 
