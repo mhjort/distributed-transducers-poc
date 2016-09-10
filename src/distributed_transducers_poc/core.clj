@@ -6,7 +6,6 @@
             [cheshire.core :refer [generate-stream parse-stream]]))
 
 (defn message-loop [f in-queue out-queue]
-  (println "Msg loop with" f in-queue out-queue)
   (let [handler (fn [message]
                   (when (= "process" (:type message)
                            (let [result (f (:payload message))]
@@ -24,7 +23,7 @@
   (load "/clojure/core/reducers")
   (let [input (parse-stream (io/reader in) true)
         output (io/writer out)]
-    (println "Called with:" input)
+    (println "Running with function:" (:function input))
     (load (:function-namespace input))
     (message-loop (load-string (:function input))
                   (:in input)

@@ -12,6 +12,7 @@
                  [com.amazonaws/aws-java-sdk-sqs "1.10.50"]
                  [com.amazonaws/aws-java-sdk-core "1.10.50"]
                  [uswitch/lambada "0.1.2"]]
+  :plugins [[lein-clj-lambda "0.5.1"]]
   :lambda {"demo" [{:handler "distributed-transducers-poc.LambdaFn"
                     :memory-size 1536
                     :timeout 300
@@ -20,7 +21,6 @@
                     :policy-statements [{:Effect "Allow"
                                          :Action ["sqs:*"]
                                          :Resource ["arn:aws:sqs:eu-west-1:*"]}]
-                    :s3 {:bucket "distributed-transducers-poc"
+                    :s3 {:bucket "mhjort-distributed-transducers-poc"
                          :object-key "lambda.jar"}}]}
-  :plugins [[lein-clj-lambda "0.5.1"]]
   :aot [distributed-transducers-poc.core serializable.fn clojure.core.reducers])

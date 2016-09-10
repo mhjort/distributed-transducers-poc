@@ -36,7 +36,6 @@
       (parse-stream true)))
 
 (defn invoke-lambda [payload lambda-function-name region]
-  (println "Invoking Lambda")
   (let [client-config (-> (ClientConfiguration.)
                           (.withSocketTimeout (* 6 60 1000)))
         client (-> (AWSLambdaClient. aws-credentials client-config)
@@ -45,9 +44,6 @@
                     (.withFunctionName lambda-function-name)
                     (.withPayload (generate-string payload)))]
     (parse-result (.invoke client request))))
-
-(defmacro super-reduce [f xs]
-  `(invoke-lambda (pr-str (s/fn [] (reduce ~f ~xs))) "distributed-transducers-poc" "eu-west-1"))
 
 (defn send-ok-messages [c buffer]
   (if-let [result (aq/peek-head buffer)]
@@ -106,6 +102,6 @@
       (sqs/delete-queue out)
       response)))
 
-(defmacro super-fold [combinef reducef xs node-count]
+(defmacro dfold [combinef reducef xs node-count]
   `(uber-reduce ~combinef (pr-str (s/fn [ys#] (r/fold ~combinef ~reducef ys#))) ~xs *ns* ~node-count "distributed-transducers-poc" "eu-west-1"))
 

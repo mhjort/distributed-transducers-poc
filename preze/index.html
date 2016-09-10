@@ -176,20 +176,21 @@ $ lein lambda install demo
         <h1>Distributed fold</h1>
         <pre class="clojure"><code data-trim data-noescape>
 (defn similar-words-6 [word words min-distance]
-  (super-fold (partial merge-with concat)
-              ((comp (map (partial levensthein-distance word))
-                     (filter (fn [[d _]] (<= d min-distance)))) append-by-distance)
-              (vec words)
-              :nodes 10))
+  (dfold (partial merge-with concat)
+          ((comp (map (partial levensthein-distance word))
+                 (filter (fn [[d _]] (<= d min-distance)))) append-by-distance)
+          (vec words)
+          10))
         </code></pre>
       </section>
       <section>
-        <h1>TODO: Results</h1>
+        <h1>Results</h1>
         <ul>
-          <li>Normal: 500 ms</li>
-          <li>Transducer: 300 ms</li>
-          <li>Parallel fold: 100 ms</li>
-          <li>Distributed fold: 50 ms</li>
+          <li>Laptop (normal): ~175 s</li>
+          <li>Laptop (transducer): ~170 s</li>
+          <li>Laptop (parallel fold): ~108 s</li>
+          <li>AWS Lambda (10 nodes): ~40 s</li>
+          <li>AWS Lambda (20 nodes): ~28 s</li>
         </ul>
       </section>
       <section>
